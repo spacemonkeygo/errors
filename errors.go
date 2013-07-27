@@ -26,7 +26,7 @@ func (e *ErrorClass) Wrap(err error) *Error {
     if err == nil {
         return nil
     }
-    return &Error{error: err, class: e}
+    return &Error{err: err, class: e}
 }
 
 func (e *ErrorClass) Is(parent *ErrorClass) bool {
@@ -39,12 +39,16 @@ func (e *ErrorClass) Is(parent *ErrorClass) bool {
 }
 
 type Error struct {
-    error
+    err   error
     class *ErrorClass
 }
 
+func (e *Error) Error() string {
+    return e.err.Error()
+}
+
 func (e *Error) Err() error {
-    return e.error
+    return e.err
 }
 
 func (e *Error) Is(ec *ErrorClass) bool {
