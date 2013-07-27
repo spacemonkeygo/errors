@@ -23,6 +23,9 @@ func (e *ErrorClass) New(format string, args ...interface{}) *Error {
 }
 
 func (e *ErrorClass) Wrap(err error) *Error {
+    if err == nil {
+        return nil
+    }
     return &Error{error: err, class: e}
 }
 
@@ -38,6 +41,10 @@ func (e *ErrorClass) Is(parent *ErrorClass) bool {
 type Error struct {
     error
     class *ErrorClass
+}
+
+func (e *Error) Err() error {
+    return e.error
 }
 
 func (e *Error) Is(ec *ErrorClass) bool {
