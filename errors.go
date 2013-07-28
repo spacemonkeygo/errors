@@ -54,3 +54,7 @@ func (e *Error) Err() error {
 func (e *Error) Is(ec *ErrorClass) bool {
     return e.class.Is(ec)
 }
+
+var (
+    NotImplementedError = New(nil)
+)
