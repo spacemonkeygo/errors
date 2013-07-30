@@ -60,7 +60,7 @@ func (e *Error) WrappedErr() error {
 func WrappedErr(err error) error {
     cast, ok := err.(*Error)
     if !ok {
-        return nil
+        return err
     }
     return cast.WrappedErr()
 }
