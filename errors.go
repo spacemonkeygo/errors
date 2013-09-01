@@ -38,9 +38,21 @@ type Error struct {
     class *ErrorClass
 }
 
-func (e *ErrorClass) Wrap(err error) error {
+func (e *ErrorClass) Wrap(err error, classes ...*ErrorClass) error {
     if err == nil {
         return nil
+    }
+    ec, ok := err.(*Error)
+    if !ok {
+        return &Error{err: err, class: e}
+    }
+    if ec.Is(e) {
+        return err
+    }
+    for _, class := range classes {
+        if ec.Is(class) {
+            return err
+        }
     }
     return &Error{err: err, class: e}
 }
@@ -55,6 +67,10 @@ func (e *Error) Error() string {
 
 func (e *Error) WrappedErr() error {
     return e.err
+}
+
+func (e *Error) Class() *ErrorClass {
+    return e.class
 }
 
 func WrappedErr(err error) error {
