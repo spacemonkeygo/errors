@@ -96,4 +96,5 @@ func (e *ErrorClass) Contains(err error) bool {
 var (
     // useful error classes
     NotImplementedError = New(nil, "Not Implemented Error")
+    ProgrammerError     = New(nil, "Programmer Error")
 )
