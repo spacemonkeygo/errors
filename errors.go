@@ -4,24 +4,49 @@ package errors
 
 import (
     "fmt"
+
+    "code.spacemonkey.com/go/space/log"
 )
 
 type ErrorClass struct {
     parent *ErrorClass
     name   string
+    log    bool
 }
 
 var (
     // base error classes. To construct your own error class, use New.
-    SystemError       = &ErrorClass{parent: nil, name: "System Error"}
-    HierarchicalError = &ErrorClass{parent: nil, name: "Error"}
+    SystemError       = &ErrorClass{parent: nil, name: "System Error", log: false}
+    HierarchicalError = &ErrorClass{parent: nil, name: "Error", log: false}
 )
 
+// NewWithLogging creates an error class for making specific errors.
+// Additionally, whenever a specific error is generated, the
+// current stack trace will be logged.
+func NewWithLogging(ec *ErrorClass, name string) *ErrorClass {
+    if ec == nil {
+        ec = HierarchicalError
+    }
+    return &ErrorClass{parent: ec, name: name, log: true}
+}
+
+// NewWithoutLogging creates an error class for making specific errors.
+// When errors from this class are generated, nothing is logged.
+func NewWithoutLogging(ec *ErrorClass, name string) *ErrorClass {
+    if ec == nil {
+        ec = HierarchicalError
+    }
+    return &ErrorClass{parent: ec, name: name, log: false}
+}
+
+// New is like NewWithLogging or NewWithoutLogging, except the logging behavior
+// is determined by the parent class. The two base classes of the error
+// hierarchy (SystemError and HierarchicalError) do not log.
 func New(ec *ErrorClass, name string) *ErrorClass {
     if ec == nil {
         ec = HierarchicalError
     }
-    return &ErrorClass{parent: ec, name: name}
+    return &ErrorClass{parent: ec, name: name, log: ec.log}
 }
 
 func (e *ErrorClass) Is(parent *ErrorClass) bool {
@@ -44,7 +69,11 @@ func (e *ErrorClass) Wrap(err error, classes ...*ErrorClass) error {
     }
     ec, ok := err.(*Error)
     if !ok {
-        return &Error{err: err, class: e}
+        rv := &Error{err: err, class: e}
+        if e.log {
+            log.PrintWithStack(rv.Error())
+        }
+        return rv
     }
     if ec.Is(e) {
         return err
@@ -54,7 +83,11 @@ func (e *ErrorClass) Wrap(err error, classes ...*ErrorClass) error {
             return err
         }
     }
-    return &Error{err: err, class: e}
+    rv := &Error{err: err, class: e}
+    if e.log {
+        log.PrintWithStack(rv.Error())
+    }
+    return rv
 }
 
 func (e *ErrorClass) New(format string, args ...interface{}) error {
@@ -95,6 +128,6 @@ func (e *ErrorClass) Contains(err error) bool {
 
 var (
     // useful error classes
-    NotImplementedError = New(nil, "Not Implemented Error")
-    ProgrammerError     = New(nil, "Programmer Error")
+    NotImplementedError = NewWithLogging(nil, "Not Implemented Error")
+    ProgrammerError     = NewWithLogging(nil, "Programmer Error")
 )
