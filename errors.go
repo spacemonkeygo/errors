@@ -3,50 +3,81 @@
 package errors
 
 import (
+    "flag"
     "fmt"
+    "log"
+    "runtime"
+    "strings"
+)
 
-    "code.spacemonkey.com/go/space/log"
+var (
+    stackLogSize = flag.Int("errors.stack_trace_log_length", 4096,
+        "The max stack trace byte length to log")
+    stackCaptureSize = flag.Int("errors.stack_trace_capture_length", 500,
+        "The max stack trace byte length to capture")
+)
+
+type ErrorClassFlags uint64
+
+const (
+    LogOnCreation ErrorClassFlags = 1 << iota
+    CaptureStack
 )
 
 type ErrorClass struct {
     parent *ErrorClass
     name   string
-    log    bool
+    flags  ErrorClassFlags
 }
 
 var (
     // base error classes. To construct your own error class, use New.
-    SystemError       = &ErrorClass{parent: nil, name: "System Error", log: false}
-    HierarchicalError = &ErrorClass{parent: nil, name: "Error", log: false}
+    SystemError = &ErrorClass{
+        parent: nil,
+        name:   "System Error"}
+    HierarchicalError = &ErrorClass{
+        parent: nil,
+        name:   "Error",
+        flags:  CaptureStack}
 )
 
-// NewWithLogging creates an error class for making specific errors.
-// Additionally, whenever a specific error is generated, the
-// current stack trace will be logged.
-func NewWithLogging(ec *ErrorClass, name string) *ErrorClass {
+// NewSpecified creates an error class for making specific errors. Regardless
+// of where the error class is in the error class hierarchy, the error class
+// flags for this error class are final, and no other context is used to
+// determine the final operating set.
+func NewSpecified(ec *ErrorClass, name string, flags ErrorClassFlags) *ErrorClass {
     if ec == nil {
         ec = HierarchicalError
     }
-    return &ErrorClass{parent: ec, name: name, log: true}
+    return &ErrorClass{parent: ec, name: name, flags: flags}
 }
 
-// NewWithoutLogging creates an error class for making specific errors.
-// When errors from this class are generated, nothing is logged.
-func NewWithoutLogging(ec *ErrorClass, name string) *ErrorClass {
+// NewWith creates an error class for making specific errors. NewWith takes the
+// parent's error class flags, appends them to the provided flags, and
+// configures the new error class to use them.
+func NewWith(ec *ErrorClass, name string, flags_to_add ErrorClassFlags) *ErrorClass {
     if ec == nil {
         ec = HierarchicalError
     }
-    return &ErrorClass{parent: ec, name: name, log: false}
+    return &ErrorClass{parent: ec, name: name, flags: ec.flags | flags_to_add}
 }
 
-// New is like NewWithLogging or NewWithoutLogging, except the logging behavior
-// is determined by the parent class. The two base classes of the error
-// hierarchy (SystemError and HierarchicalError) do not log.
+// NewWithout creates an error class for making specific errors. NewWithout
+// takes the parent's error class flags, ensures the provided flags are
+// stripped, and configures the new error class to use the resulting set.
+func NewWithout(ec *ErrorClass, name string, flags_to_remove ErrorClassFlags) *ErrorClass {
+    if ec == nil {
+        ec = HierarchicalError
+    }
+    return &ErrorClass{parent: ec, name: name, flags: ec.flags & ^flags_to_remove}
+}
+
+// New is like NewWith or NewWithout without any flags provided.
 func New(ec *ErrorClass, name string) *ErrorClass {
     if ec == nil {
         ec = HierarchicalError
     }
-    return &ErrorClass{parent: ec, name: name, log: ec.log}
+    return &ErrorClass{parent: ec, name: name, flags: ec.flags}
 }
 
 func (e *ErrorClass) Is(parent *ErrorClass) bool {
@@ -61,31 +92,30 @@ func (e *ErrorClass) Is(parent *ErrorClass) bool {
 type Error struct {
     err   error
     class *ErrorClass
+    stack []byte
 }
 
 func (e *ErrorClass) Wrap(err error, classes ...*ErrorClass) error {
     if err == nil {
         return nil
     }
-    ec, ok := err.(*Error)
-    if !ok {
-        rv := &Error{err: err, class: e}
-        if e.log {
-            log.PrintWithStack(rv.Error())
-        }
-        return rv
-    }
-    if ec.Is(e) {
-        return err
-    }
-    for _, class := range classes {
-        if ec.Is(class) {
+    if ec, ok := err.(*Error); ok {
+        if ec.Is(e) {
             return err
+        }
+        for _, class := range classes {
+            if ec.Is(class) {
+                return err
+            }
         }
     }
     rv := &Error{err: err, class: e}
-    if e.log {
-        log.PrintWithStack(rv.Error())
+    if e.flags&CaptureStack > 0 {
+        buf := make([]byte, *stackCaptureSize)
+        rv.stack = buf[:runtime.Stack(buf, false)]
+    }
+    if e.flags&LogOnCreation > 0 {
+        LogWithStack(rv.Error())
     }
     return rv
 }
@@ -95,7 +125,13 @@ func (e *ErrorClass) New(format string, args ...interface{}) error {
 }
 
 func (e *Error) Error() string {
-    return fmt.Sprintf("%s: %s", e.class.name, e.err.Error())
+    tabbed_in_message := strings.TrimRight(strings.Replace(
+        e.err.Error(), "\n", "\n  ", -1), "\n ")
+    if e.stack == nil {
+        return fmt.Sprintf("%s: %s", e.class.name, tabbed_in_message)
+    }
+    return fmt.Sprintf("%s: %s\n\n%s backtrace: %s", e.class.name,
+        tabbed_in_message, e.class.name, e.stack)
 }
 
 func (e *Error) WrappedErr() error {
@@ -104,6 +140,10 @@ func (e *Error) WrappedErr() error {
 
 func (e *Error) Class() *ErrorClass {
     return e.class
+}
+
+func (e *Error) Stack() []byte {
+    return e.stack
 }
 
 func WrappedErr(err error) error {
@@ -126,8 +166,14 @@ func (e *ErrorClass) Contains(err error) bool {
     return cast.Is(e)
 }
 
+func LogWithStack(message string) {
+    buf := make([]byte, *stackLogSize)
+    buf = buf[:runtime.Stack(buf, false)]
+    log.Printf("%s\n%s", message, buf)
+}
+
 var (
     // useful error classes
-    NotImplementedError = NewWithLogging(nil, "Not Implemented Error")
-    ProgrammerError     = NewWithLogging(nil, "Programmer Error")
+    NotImplementedError = NewSpecified(nil, "Not Implemented Error", LogOnCreation|CaptureStack)
+    ProgrammerError     = NewSpecified(nil, "Programmer Error", LogOnCreation|CaptureStack)
 )
