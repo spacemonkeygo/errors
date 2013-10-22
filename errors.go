@@ -125,13 +125,17 @@ func (e *ErrorClass) New(format string, args ...interface{}) error {
 }
 
 func (e *Error) Error() string {
-    tabbed_in_message := strings.TrimRight(strings.Replace(
-        e.err.Error(), "\n", "\n  ", -1), "\n ")
-    if e.stack == nil {
-        return fmt.Sprintf("%s: %s", e.class.name, tabbed_in_message)
+    message := strings.TrimRight(e.err.Error(), "\n ")
+    if strings.Contains(message, "\n") {
+        message = fmt.Sprintf("%s:\n  %s", e.class.name,
+            strings.Replace(message, "\n", "\n  ", -1))
+    } else {
+        message = fmt.Sprintf("%s: %s", e.class.name, message)
     }
-    return fmt.Sprintf("%s: %s\n\n%s backtrace: %s", e.class.name,
-        tabbed_in_message, e.class.name, e.stack)
+    if e.stack == nil {
+        return message
+    }
+    return fmt.Sprintf("%s\n\n%s backtrace: %s", message, e.class.name, e.stack)
 }
 
 func (e *Error) WrappedErr() error {
