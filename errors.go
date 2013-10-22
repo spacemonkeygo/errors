@@ -80,6 +80,10 @@ func New(ec *ErrorClass, name string) *ErrorClass {
     return &ErrorClass{parent: ec, name: name, flags: ec.flags}
 }
 
+func (e *ErrorClass) Parent() *ErrorClass {
+    return e.parent
+}
+
 func (e *ErrorClass) Is(parent *ErrorClass) bool {
     for check := e; check != nil; check = check.parent {
         if check == parent {
