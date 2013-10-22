@@ -13,7 +13,7 @@ import (
 var (
     stackLogSize = flag.Int("errors.stack_trace_log_length", 4096,
         "The max stack trace byte length to log")
-    stackCaptureSize = flag.Int("errors.stack_trace_capture_length", 500,
+    stackCaptureSize = flag.Int("errors.stack_trace_capture_length", 2048,
         "The max stack trace byte length to capture")
 )
 
