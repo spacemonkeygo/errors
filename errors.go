@@ -84,6 +84,10 @@ func (e *ErrorClass) Parent() *ErrorClass {
     return e.parent
 }
 
+func (e *ErrorClass) String() string {
+    return e.name
+}
+
 func (e *ErrorClass) Is(parent *ErrorClass) bool {
     for check := e; check != nil; check = check.parent {
         if check == parent {
@@ -131,15 +135,15 @@ func (e *ErrorClass) New(format string, args ...interface{}) error {
 func (e *Error) Error() string {
     message := strings.TrimRight(e.err.Error(), "\n ")
     if strings.Contains(message, "\n") {
-        message = fmt.Sprintf("%s:\n  %s", e.class.name,
+        message = fmt.Sprintf("%s:\n  %s", e.class.String(),
             strings.Replace(message, "\n", "\n  ", -1))
     } else {
-        message = fmt.Sprintf("%s: %s", e.class.name, message)
+        message = fmt.Sprintf("%s: %s", e.class.String(), message)
     }
     if e.stack == nil {
         return message
     }
-    return fmt.Sprintf("%s\n\n%s backtrace: %s", message, e.class.name, e.stack)
+    return fmt.Sprintf("%s\n\n%s backtrace: %s", message, e.class.String(), e.stack)
 }
 
 func (e *Error) WrappedErr() error {
@@ -160,6 +164,14 @@ func WrappedErr(err error) error {
         return err
     }
     return cast.WrappedErr()
+}
+
+func GetClass(err error) *ErrorClass {
+    cast, ok := err.(*Error)
+    if !ok {
+        return SystemError
+    }
+    return cast.Class()
 }
 
 func (e *Error) Is(ec *ErrorClass) bool {
