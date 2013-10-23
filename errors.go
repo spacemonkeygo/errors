@@ -6,8 +6,11 @@ import (
     "flag"
     "fmt"
     "log"
+    "net"
+    "os"
     "runtime"
     "strings"
+    "syscall"
 )
 
 var (
@@ -169,7 +172,7 @@ func WrappedErr(err error) error {
 func GetClass(err error) *ErrorClass {
     cast, ok := err.(*Error)
     if !ok {
-        return SystemError
+        return findSystemErrorClass(err)
     }
     return cast.Class()
 }
@@ -179,11 +182,7 @@ func (e *Error) Is(ec *ErrorClass) bool {
 }
 
 func (e *ErrorClass) Contains(err error) bool {
-    cast, ok := err.(*Error)
-    if !ok {
-        return SystemError == e
-    }
-    return cast.Is(e)
+    return GetClass(err).Is(e)
 }
 
 func LogWithStack(message string) {
@@ -194,6 +193,51 @@ func LogWithStack(message string) {
 
 var (
     // useful error classes
-    NotImplementedError = NewSpecified(nil, "Not Implemented Error", LogOnCreation|CaptureStack)
-    ProgrammerError     = NewSpecified(nil, "Programmer Error", LogOnCreation|CaptureStack)
+    NotImplementedError = NewWith(nil, "Not Implemented Error", LogOnCreation)
+    ProgrammerError     = NewWith(nil, "Programmer Error", LogOnCreation)
+
+    // classes we fake
+
+    // from os
+    SyscallError = New(SystemError, "Syscall Error")
+
+    // from syscall
+    ErrnoError = New(SystemError, "Errno Error")
+
+    // from net
+    NetworkError        = New(SystemError, "Network Error")
+    UnknownNetworkError = New(NetworkError, "Unknown Network Error")
+    AddrError           = New(NetworkError, "Addr Error")
+    InvalidAddrError    = New(AddrError, "Invalid Addr Error")
+    NetOpError          = New(NetworkError, "Network Op Error")
+    NetParseError       = New(NetworkError, "Network Parse Error")
+    DNSError            = New(NetworkError, "DNS Error")
+    DNSConfigError      = New(DNSError, "DNS Config Error")
 )
+
+func findSystemErrorClass(err error) *ErrorClass {
+    switch err.(type) {
+    case *os.SyscallError:
+        return SyscallError
+    case syscall.Errno:
+        return ErrnoError
+    case net.UnknownNetworkError:
+        return UnknownNetworkError
+    case *net.AddrError:
+        return AddrError
+    case net.InvalidAddrError:
+        return InvalidAddrError
+    case *net.OpError:
+        return NetOpError
+    case *net.ParseError:
+        return NetParseError
+    case *net.DNSError:
+        return DNSError
+    case *net.DNSConfigError:
+        return DNSConfigError
+    case net.Error:
+        return NetworkError
+    default:
+        return SystemError
+    }
+}
