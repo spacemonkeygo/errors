@@ -170,6 +170,9 @@ func WrappedErr(err error) error {
 }
 
 func GetClass(err error) *ErrorClass {
+    if err == nil {
+        return nil
+    }
     cast, ok := err.(*Error)
     if !ok {
         return findSystemErrorClass(err)
@@ -182,7 +185,11 @@ func (e *Error) Is(ec *ErrorClass) bool {
 }
 
 func (e *ErrorClass) Contains(err error) bool {
-    return GetClass(err).Is(e)
+    class := GetClass(err)
+    if class == nil {
+        return false
+    }
+    return class.Is(e)
 }
 
 func LogWithStack(message string) {
@@ -195,6 +202,7 @@ var (
     // useful error classes
     NotImplementedError = NewWith(nil, "Not Implemented Error", LogOnCreation)
     ProgrammerError     = NewWith(nil, "Programmer Error", LogOnCreation)
+    PanicError          = NewWith(nil, "PanicError", LogOnCreation)
 
     // classes we fake
 
@@ -239,5 +247,24 @@ func findSystemErrorClass(err error) *ErrorClass {
         return NetworkError
     default:
         return SystemError
+    }
+}
+
+func Recover() error {
+    r := recover()
+    if r == nil {
+        return nil
+    }
+    err, ok := r.(error)
+    if ok {
+        return err
+    }
+    return PanicError.New("%v", err)
+}
+
+func CatchPanic(err_ref *error) {
+    r := Recover()
+    if r != nil {
+        *err_ref = r
     }
 }
