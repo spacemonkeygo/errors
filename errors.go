@@ -8,6 +8,7 @@ import (
     "log"
     "net"
     "os"
+    "path/filepath"
     "runtime"
     "strings"
     "syscall"
@@ -100,10 +101,38 @@ func (e *ErrorClass) Is(parent *ErrorClass) bool {
     return false
 }
 
+// exit logs the pc at some point during execution.
+type exit struct {
+    pc uintptr
+}
+
+// String returns a human readable form of the exit.
+func (e exit) String() string {
+    if e.pc == 0 {
+        return "unknown.unknown:0"
+    }
+    f := runtime.FuncForPC(e.pc)
+    if f == nil {
+        return "unknown.unknown:0"
+    }
+    file, line := f.FileLine(e.pc)
+    return fmt.Sprintf("%s:%s:%d", f.Name(), filepath.Base(file), line)
+}
+
+// callerState records the pc into an exit for two callers up.
+func callerState() exit {
+    pc, _, _, ok := runtime.Caller(2)
+    if !ok {
+        return exit{pc: 0}
+    }
+    return exit{pc: pc}
+}
+
 type Error struct {
     err   error
     class *ErrorClass
     stack []byte
+    exits []exit
 }
 
 func (e *ErrorClass) Wrap(err error, classes ...*ErrorClass) error {
@@ -143,10 +172,20 @@ func (e *Error) Error() string {
     } else {
         message = fmt.Sprintf("%s: %s", e.class.String(), message)
     }
-    if e.stack == nil {
-        return message
+    if e.stack != nil {
+        message = fmt.Sprintf(
+            "%s\n\n%s backtrace: %s", message, e.class, e.stack)
     }
-    return fmt.Sprintf("%s\n\n%s backtrace: %s", message, e.class.String(), e.stack)
+    if len(e.exits) > 0 {
+        exits := make([]string, len(e.exits))
+        for i, ex := range e.exits {
+            exits[len(exits)-i-1] = ex.String()
+        }
+        exit_str := strings.Join(exits, "\n")
+        message = fmt.Sprintf(
+            "%s\n%s exits:\n%s", message, e.class, exit_str)
+    }
+    return message
 }
 
 func (e *Error) WrappedErr() error {
@@ -159,6 +198,15 @@ func (e *Error) Class() *ErrorClass {
 
 func (e *Error) Stack() []byte {
     return e.stack
+}
+
+func Record(err error) error {
+    cast, ok := err.(*Error)
+    if !ok {
+        return err
+    }
+    cast.exits = append(cast.exits, callerState())
+    return cast
 }
 
 func WrappedErr(err error) error {
