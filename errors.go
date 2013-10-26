@@ -120,12 +120,34 @@ func (e exit) String() string {
 }
 
 // callerState records the pc into an exit for two callers up.
-func callerState() exit {
-    pc, _, _, ok := runtime.Caller(2)
+func callerState(depth int) exit {
+    pc, _, _, ok := runtime.Caller(depth)
     if !ok {
         return exit{pc: 0}
     }
     return exit{pc: pc}
+}
+
+// record will record the pc at the given depth into the error if it is
+// capable of recording it.
+func record(err error, depth int) error {
+    cast, ok := err.(*Error)
+    if !ok {
+        return err
+    }
+    cast.exits = append(cast.exits, callerState(depth))
+    return cast
+}
+
+// Record will record the pc of where it is called on to the error.
+func Record(err error) error {
+    return record(err, 3)
+}
+
+// RecordBefore will record the pc depth frames above of where it is called on
+// to the error. Record(err) is equivalent to RecordBefore(err, 0)
+func RecordBefore(err error, depth int) error {
+    return record(err, 3+depth)
 }
 
 type Error struct {
@@ -179,7 +201,7 @@ func (e *Error) Error() string {
     if len(e.exits) > 0 {
         exits := make([]string, len(e.exits))
         for i, ex := range e.exits {
-            exits[len(exits)-i-1] = ex.String()
+            exits[i] = ex.String()
         }
         exit_str := strings.Join(exits, "\n")
         message = fmt.Sprintf(
@@ -198,15 +220,6 @@ func (e *Error) Class() *ErrorClass {
 
 func (e *Error) Stack() []byte {
     return e.stack
-}
-
-func Record(err error) error {
-    cast, ok := err.(*Error)
-    if !ok {
-        return err
-    }
-    cast.exits = append(cast.exits, callerState())
-    return cast
 }
 
 func WrappedErr(err error) error {
