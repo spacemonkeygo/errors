@@ -5,6 +5,7 @@ package errors
 import (
     "flag"
     "fmt"
+    "io"
     "log"
     "net"
     "os"
@@ -282,9 +283,34 @@ var (
     NetParseError       = New(NetworkError, "Network Parse Error")
     DNSError            = New(NetworkError, "DNS Error")
     DNSConfigError      = New(DNSError, "DNS Config Error")
+
+    // from io
+    IOError            = New(SystemError, "IO Error")
+    EOF                = New(IOError, "EOF")
+    ClosedPipeError    = New(IOError, "Closed Pipe Error")
+    NoProgressError    = New(IOError, "No Progress Error")
+    ShortBufferError   = New(IOError, "Short Buffer Error")
+    ShortWriteError    = New(IOError, "Short Write Error")
+    UnexpectedEOFError = New(IOError, "Unexpected EOF Error")
 )
 
 func findSystemErrorClass(err error) *ErrorClass {
+    switch err {
+    case io.EOF:
+        return EOF
+    case io.ErrUnexpectedEOF:
+        return UnexpectedEOFError
+    case io.ErrClosedPipe:
+        return ClosedPipeError
+    case io.ErrNoProgress:
+        return NoProgressError
+    case io.ErrShortBuffer:
+        return ShortBufferError
+    case io.ErrShortWrite:
+        return ShortWriteError
+    default:
+        break
+    }
     switch err.(type) {
     case *os.SyscallError:
         return SyscallError
