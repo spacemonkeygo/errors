@@ -197,7 +197,7 @@ func (e *Error) Error() string {
     }
     if e.stack != nil {
         message = fmt.Sprintf(
-            "%s\n\n%s backtrace: %s", message, e.class, e.stack)
+            "%s\n\n\"%s\" backtrace: %s", message, e.class, e.stack)
     }
     if len(e.exits) > 0 {
         exits := make([]string, len(e.exits))
@@ -206,7 +206,7 @@ func (e *Error) Error() string {
         }
         exit_str := strings.Join(exits, "\n")
         message = fmt.Sprintf(
-            "%s\n%s exits:\n%s", message, e.class, exit_str)
+            "%s\n\"%s\" exits:\n%s", message, e.class, exit_str)
     }
     return message
 }
