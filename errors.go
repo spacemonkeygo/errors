@@ -132,6 +132,9 @@ func callerState(depth int) exit {
 // record will record the pc at the given depth into the error if it is
 // capable of recording it.
 func record(err error, depth int) error {
+    if err == nil {
+        return nil
+    }
     cast, ok := err.(*Error)
     if !ok {
         return err
@@ -254,10 +257,10 @@ func (e *ErrorClass) Contains(err error) bool {
     return class.Is(e)
 }
 
-func LogWithStack(message string) {
+func LogWithStack(messages ...interface{}) {
     buf := make([]byte, *stackLogSize)
     buf = buf[:runtime.Stack(buf, false)]
-    log.Printf("%s\n%s", message, buf)
+    log.Printf("%s\n%s", fmt.Sprintln(messages...), buf)
 }
 
 var (
