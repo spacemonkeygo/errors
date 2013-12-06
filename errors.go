@@ -267,7 +267,8 @@ var (
     // useful error classes
     NotImplementedError = NewWith(nil, "Not Implemented Error", LogOnCreation)
     ProgrammerError     = NewWith(nil, "Programmer Error", LogOnCreation)
-    PanicError          = NewWith(nil, "PanicError", LogOnCreation)
+    PanicError          = NewWith(nil, "Panic Error", LogOnCreation)
+    ErrorGroupError     = New(nil, "Error Group Errpr")
 
     // classes we fake
 
@@ -357,4 +358,30 @@ func CatchPanic(err_ref *error) {
     if r != nil {
         *err_ref = r
     }
+}
+
+type ErrorGroup struct {
+    Errors []error
+}
+
+func NewErrorGroup() *ErrorGroup { return &ErrorGroup{} }
+
+func (e *ErrorGroup) Add(err error) {
+    if err != nil {
+        e.Errors = append(e.Errors, err)
+    }
+}
+
+func (e *ErrorGroup) Finalize() error {
+    if len(e.Errors) == 0 {
+        return nil
+    }
+    if len(e.Errors) == 1 {
+        return e.Errors[0]
+    }
+    msgs := make([]string, 0, len(e.Errors))
+    for _, err := range e.Errors {
+        msgs = append(msgs, err.Error())
+    }
+    return ErrorGroupError.New(strings.Join(msgs, "\n"))
 }
