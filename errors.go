@@ -268,7 +268,7 @@ var (
     NotImplementedError = NewWith(nil, "Not Implemented Error", LogOnCreation)
     ProgrammerError     = NewWith(nil, "Programmer Error", LogOnCreation)
     PanicError          = NewWith(nil, "Panic Error", LogOnCreation)
-    ErrorGroupError     = New(nil, "Error Group Errpr")
+    ErrorGroupError     = New(nil, "Error Group Error")
 
     // classes we fake
 
