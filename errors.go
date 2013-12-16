@@ -18,8 +18,6 @@ import (
 var (
     stackLogSize = flag.Int("errors.stack_trace_log_length", 4096,
         "The max stack trace byte length to log")
-    stackCaptureSize = flag.Int("errors.stack_trace_capture_length", 2048,
-        "The max stack trace byte length to capture")
 )
 
 type ErrorClassFlags uint64
@@ -102,13 +100,13 @@ func (e *ErrorClass) Is(parent *ErrorClass) bool {
     return false
 }
 
-// exit logs the pc at some point during execution.
-type exit struct {
+// frame logs the pc at some point during execution.
+type frame struct {
     pc uintptr
 }
 
-// String returns a human readable form of the exit.
-func (e exit) String() string {
+// String returns a human readable form of the frame.
+func (e frame) String() string {
     if e.pc == 0 {
         return "unknown.unknown:0"
     }
@@ -120,13 +118,13 @@ func (e exit) String() string {
     return fmt.Sprintf("%s:%s:%d", f.Name(), filepath.Base(file), line)
 }
 
-// callerState records the pc into an exit for two callers up.
-func callerState(depth int) exit {
+// callerState records the pc into an frame for two callers up.
+func callerState(depth int) frame {
     pc, _, _, ok := runtime.Caller(depth)
     if !ok {
-        return exit{pc: 0}
+        return frame{pc: 0}
     }
-    return exit{pc: pc}
+    return frame{pc: pc}
 }
 
 // record will record the pc at the given depth into the error if it is
@@ -157,8 +155,8 @@ func RecordBefore(err error, depth int) error {
 type Error struct {
     err   error
     class *ErrorClass
-    stack []byte
-    exits []exit
+    stack []frame
+    exits []frame
 }
 
 func (e *ErrorClass) Wrap(err error, classes ...*ErrorClass) error {
@@ -177,8 +175,12 @@ func (e *ErrorClass) Wrap(err error, classes ...*ErrorClass) error {
     }
     rv := &Error{err: err, class: e}
     if e.flags&CaptureStack > 0 {
-        buf := make([]byte, *stackCaptureSize)
-        rv.stack = buf[:runtime.Stack(buf, false)]
+        var pcs [256]uintptr
+        amount := runtime.Callers(3, pcs[:])
+        rv.stack = make([]frame, amount)
+        for i := 0; i < amount; i++ {
+            rv.stack[i] = frame{pcs[i]}
+        }
     }
     if e.flags&LogOnCreation > 0 {
         LogWithStack(rv.Error())
@@ -198,18 +200,13 @@ func (e *Error) Error() string {
     } else {
         message = fmt.Sprintf("%s: %s", e.class.String(), message)
     }
-    if e.stack != nil {
+    if stack := e.Stack(); stack != "" {
         message = fmt.Sprintf(
-            "%s\n\n\"%s\" backtrace: %s", message, e.class, e.stack)
+            "%s\n\"%s\" backtrace:\n%s", message, e.class, stack)
     }
-    if len(e.exits) > 0 {
-        exits := make([]string, len(e.exits))
-        for i, ex := range e.exits {
-            exits[i] = ex.String()
-        }
-        exit_str := strings.Join(exits, "\n")
+    if exits := e.Exits(); exits != "" {
         message = fmt.Sprintf(
-            "%s\n\"%s\" exits:\n%s", message, e.class, exit_str)
+            "%s\n\"%s\" exits:\n%s", message, e.class, exits)
     }
     return message
 }
@@ -222,8 +219,26 @@ func (e *Error) Class() *ErrorClass {
     return e.class
 }
 
-func (e *Error) Stack() []byte {
-    return e.stack
+func (e *Error) Stack() string {
+    if len(e.stack) > 0 {
+        frames := make([]string, len(e.stack))
+        for i, f := range e.stack {
+            frames[i] = f.String()
+        }
+        return strings.Join(frames, "\n")
+    }
+    return ""
+}
+
+func (e *Error) Exits() string {
+    if len(e.exits) > 0 {
+        exits := make([]string, len(e.exits))
+        for i, ex := range e.exits {
+            exits[i] = ex.String()
+        }
+        return strings.Join(exits, "\n")
+    }
+    return ""
 }
 
 func WrappedErr(err error) error {

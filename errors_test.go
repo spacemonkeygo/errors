@@ -19,3 +19,13 @@ func testRecord2() error {
 func TestRecord(t *testing.T) {
     t.Log(testRecord0())
 }
+
+func TestBacktrace(t *testing.T) {
+    t.Log(testRecord0())
+    ch := make(chan bool)
+    go func() {
+        t.Log(testRecord0())
+        ch <- true
+    }()
+    <-ch
+}
