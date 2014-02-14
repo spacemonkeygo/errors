@@ -3,6 +3,7 @@
 package errors
 
 import (
+    "errors"
     "flag"
     "fmt"
     "io"
@@ -12,75 +13,104 @@ import (
     "path/filepath"
     "runtime"
     "strings"
+    "sync/atomic"
     "syscall"
 )
 
 var (
     stackLogSize = flag.Int("errors.stack_trace_log_length", 4096,
         "The max stack trace byte length to log")
+    lastId int64 = 0
 )
 
-type ErrorClassFlags uint64
+type DataKey struct{ id int64 }
 
-const (
-    LogOnCreation ErrorClassFlags = 1 << iota
-    CaptureStack
+func GenSym() DataKey { return DataKey{id: atomic.AddInt64(&lastId, 1)} }
+
+var (
+    logOnCreation      = GenSym()
+    captureStack       = GenSym()
+    disableInheritance = GenSym()
 )
 
 type ErrorClass struct {
     parent *ErrorClass
     name   string
-    flags  ErrorClassFlags
+    data   map[DataKey]interface{}
 }
 
 var (
     // base error classes. To construct your own error class, use New.
     SystemError = &ErrorClass{
         parent: nil,
-        name:   "System Error"}
+        name:   "System Error",
+        data:   map[DataKey]interface{}{}}
     HierarchicalError = &ErrorClass{
         parent: nil,
         name:   "Error",
-        flags:  CaptureStack}
+        data:   map[DataKey]interface{}{captureStack: true}}
 )
 
-// NewSpecified creates an error class for making specific errors. Regardless
-// of where the error class is in the error class hierarchy, the error class
-// flags for this error class are final, and no other context is used to
-// determine the final operating set.
-func NewSpecified(ec *ErrorClass, name string, flags ErrorClassFlags) *ErrorClass {
-    if ec == nil {
-        ec = HierarchicalError
+type ErrorOption func(map[DataKey]interface{})
+
+func SetData(key DataKey, value interface{}) ErrorOption {
+    return func(m map[DataKey]interface{}) {
+        m[key] = value
     }
-    return &ErrorClass{parent: ec, name: name, flags: flags}
 }
 
-// NewWith creates an error class for making specific errors. NewWith takes the
-// parent's error class flags, appends them to the provided flags, and
-// configures the new error class to use them.
-func NewWith(ec *ErrorClass, name string, flags_to_add ErrorClassFlags) *ErrorClass {
-    if ec == nil {
-        ec = HierarchicalError
-    }
-    return &ErrorClass{parent: ec, name: name, flags: ec.flags | flags_to_add}
+func LogOnCreation() ErrorOption {
+    return SetData(logOnCreation, true)
 }
 
-// NewWithout creates an error class for making specific errors. NewWithout
-// takes the parent's error class flags, ensures the provided flags are
-// stripped, and configures the new error class to use the resulting set.
-func NewWithout(ec *ErrorClass, name string, flags_to_remove ErrorClassFlags) *ErrorClass {
-    if ec == nil {
-        ec = HierarchicalError
-    }
-    return &ErrorClass{parent: ec, name: name, flags: ec.flags & ^flags_to_remove}
+func CaptureStack() ErrorOption {
+    return SetData(captureStack, true)
 }
 
-// New is like NewWith or NewWithout without any flags provided.
-func New(ec *ErrorClass, name string) *ErrorClass {
-    if ec == nil {
-        ec = HierarchicalError
+func NoLogOnCreation() ErrorOption {
+    return SetData(logOnCreation, false)
+}
+
+func NoCaptureStack() ErrorOption {
+    return SetData(captureStack, false)
+}
+
+func DisableInheritance() ErrorOption {
+    return SetData(disableInheritance, true)
+}
+
+func boolWrapper(val interface{}, default_value bool) bool {
+    rv, ok := val.(bool)
+    if ok {
+        return rv
     }
-    return &ErrorClass{parent: ec, name: name, flags: ec.flags}
+    return default_value
+}
+
+// New creates an error class with the provided name and options.
+func New(parent *ErrorClass, name string, options ...ErrorOption) *ErrorClass {
+    if parent == nil {
+        parent = HierarchicalError
+    }
+    ec := &ErrorClass{parent: parent,
+        name: name,
+        data: make(map[DataKey]interface{})}
+    for _, option := range options {
+        option(ec.data)
+    }
+    if !boolWrapper(ec.data[disableInheritance], false) {
+        // hoist options for speed
+        for key, val := range parent.data {
+            _, exists := ec.data[key]
+            if !exists {
+                ec.data[key] = val
+            }
+        }
+        return ec
+    } else {
+        delete(ec.data, disableInheritance)
+    }
+    return ec
 }
 
 func (e *ErrorClass) Parent() *ErrorClass {
@@ -157,24 +187,60 @@ type Error struct {
     class *ErrorClass
     stack []frame
     exits []frame
+    data  map[DataKey]interface{}
 }
 
-func (e *ErrorClass) Wrap(err error, classes ...*ErrorClass) error {
+func (e *Error) GetData(key DataKey) interface{} {
+    if e.data != nil {
+        val, ok := e.data[key]
+        if ok {
+            return val
+        }
+        if boolWrapper(e.data[disableInheritance], false) {
+            return nil
+        }
+    }
+    return e.class.data[key]
+}
+
+func GetData(err error, key DataKey) interface{} {
+    cast, ok := err.(*Error)
+    if ok {
+        return cast.GetData(key)
+    }
+    return nil
+}
+
+func (e *ErrorClass) wrap(err error, classes []*ErrorClass,
+    options []ErrorOption) error {
     if err == nil {
         return nil
     }
     if ec, ok := err.(*Error); ok {
         if ec.Is(e) {
-            return err
-        }
-        for _, class := range classes {
-            if ec.Is(class) {
-                return err
+            if len(options) == 0 {
+                return ec
+            }
+            // if we have options, we have to wrap it cause we don't want to
+            // mutate the existing error.
+        } else {
+            for _, class := range classes {
+                if ec.Is(class) {
+                    return err
+                }
             }
         }
     }
+
     rv := &Error{err: err, class: e}
-    if e.flags&CaptureStack > 0 {
+    if len(options) > 0 {
+        rv.data = make(map[DataKey]interface{})
+        for _, option := range options {
+            option(rv.data)
+        }
+    }
+
+    if boolWrapper(rv.GetData(captureStack), false) {
         var pcs [256]uintptr
         amount := runtime.Callers(3, pcs[:])
         rv.stack = make([]frame, amount)
@@ -182,14 +248,26 @@ func (e *ErrorClass) Wrap(err error, classes ...*ErrorClass) error {
             rv.stack[i] = frame{pcs[i]}
         }
     }
-    if e.flags&LogOnCreation > 0 {
+    if boolWrapper(rv.GetData(logOnCreation), false) {
         LogWithStack(rv.Error())
     }
     return rv
 }
 
+func (e *ErrorClass) WrapUnless(err error, classes ...*ErrorClass) error {
+    return e.wrap(err, classes, nil)
+}
+
+func (e *ErrorClass) Wrap(err error, options ...ErrorOption) error {
+    return e.wrap(err, nil, options)
+}
+
 func (e *ErrorClass) New(format string, args ...interface{}) error {
-    return e.Wrap(fmt.Errorf(format, args...))
+    return e.wrap(fmt.Errorf(format, args...), nil, nil)
+}
+
+func (e *ErrorClass) NewWith(message string, options ...ErrorOption) error {
+    return e.wrap(errors.New(message), nil, options)
 }
 
 func (e *Error) Error() string {
@@ -209,6 +287,15 @@ func (e *Error) Error() string {
             "%s\n\"%s\" exits:\n%s", message, e.class, exits)
     }
     return message
+}
+
+func (e *Error) Message() string {
+    message := strings.TrimRight(GetMessage(e.err), "\n ")
+    if strings.Contains(message, "\n") {
+        return fmt.Sprintf("%s:\n  %s", e.class.String(),
+            strings.Replace(message, "\n", "\n  ", -1))
+    }
+    return fmt.Sprintf("%s: %s", e.class.String(), message)
 }
 
 func (e *Error) WrappedErr() error {
@@ -257,19 +344,52 @@ func GetClass(err error) *ErrorClass {
     if !ok {
         return findSystemErrorClass(err)
     }
-    return cast.Class()
+    return cast.class
 }
 
-func (e *Error) Is(ec *ErrorClass) bool {
-    return e.class.Is(ec)
+func GetMessage(err error) string {
+    if err == nil {
+        return ""
+    }
+    cast, ok := err.(*Error)
+    if !ok {
+        return err.Error()
+    }
+    return cast.Message()
 }
 
-func (e *ErrorClass) Contains(err error) bool {
-    class := GetClass(err)
-    if class == nil {
+type EquivalenceOption int
+
+const (
+    IncludeWrapped EquivalenceOption = 1
+)
+
+func combineEquivOpts(opts []EquivalenceOption) (rv EquivalenceOption) {
+    for _, opt := range opts {
+        rv |= opt
+    }
+    return rv
+}
+
+func (e *Error) Is(ec *ErrorClass, opts ...EquivalenceOption) bool {
+    return ec.Contains(e, opts...)
+}
+
+func (e *ErrorClass) Contains(err error, opts ...EquivalenceOption) bool {
+    if err == nil {
         return false
     }
-    return class.Is(e)
+    cast, ok := err.(*Error)
+    if !ok {
+        return findSystemErrorClass(err).Is(e)
+    }
+    if cast.class.Is(e) {
+        return true
+    }
+    if combineEquivOpts(opts)&IncludeWrapped == 0 {
+        return false
+    }
+    return e.Contains(cast.err, opts...)
 }
 
 func LogWithStack(messages ...interface{}) {
@@ -280,9 +400,9 @@ func LogWithStack(messages ...interface{}) {
 
 var (
     // useful error classes
-    NotImplementedError = NewWith(nil, "Not Implemented Error", LogOnCreation)
-    ProgrammerError     = NewWith(nil, "Programmer Error", LogOnCreation)
-    PanicError          = NewWith(nil, "Panic Error", LogOnCreation)
+    NotImplementedError = New(nil, "Not Implemented Error", LogOnCreation())
+    ProgrammerError     = New(nil, "Programmer Error", LogOnCreation())
+    PanicError          = New(nil, "Panic Error", LogOnCreation())
     ErrorGroupError     = New(nil, "Error Group Error")
 
     // classes we fake
