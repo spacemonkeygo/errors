@@ -20,12 +20,12 @@ import (
 var (
 	stackLogSize = flag.Int("errors.stack_trace_log_length", 4096,
 		"The max stack trace byte length to log")
-	lastId int64 = 0
+	lastId int32 = 0
 )
 
-type DataKey struct{ id int64 }
+type DataKey struct{ id int32 }
 
-func GenSym() DataKey { return DataKey{id: atomic.AddInt64(&lastId, 1)} }
+func GenSym() DataKey { return DataKey{id: atomic.AddInt32(&lastId, 1)} }
 
 var (
 	logOnCreation      = GenSym()
