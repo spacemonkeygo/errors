@@ -485,7 +485,7 @@ func Recover() error {
 	if ok {
 		return err
 	}
-	return PanicError.New("%v", err)
+	return PanicError.New("%v", r)
 }
 
 func CatchPanic(err_ref *error) {
