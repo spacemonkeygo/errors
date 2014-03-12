@@ -476,23 +476,17 @@ func findSystemErrorClass(err error) *ErrorClass {
 	}
 }
 
-func Recover() error {
+func CatchPanic(err_ref *error) {
 	r := recover()
 	if r == nil {
-		return nil
+		return
 	}
 	err, ok := r.(error)
 	if ok {
-		return err
+		*err_ref = err
+		return
 	}
-	return PanicError.New("%v", r)
-}
-
-func CatchPanic(err_ref *error) {
-	r := Recover()
-	if r != nil {
-		*err_ref = r
-	}
+	*err_ref = PanicError.New("%v", r)
 }
 
 type ErrorGroup struct {
