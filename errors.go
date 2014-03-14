@@ -7,7 +7,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"log"
 	"net"
 	"os"
 	"path/filepath"
@@ -15,12 +14,16 @@ import (
 	"strings"
 	"sync/atomic"
 	"syscall"
+
+	"code.spacemonkey.com/go/space/log"
 )
 
 var (
 	stackLogSize = flag.Int("errors.stack_trace_log_length", 4096,
 		"The max stack trace byte length to log")
 	lastId int32 = 0
+
+	logger = log.GetLoggerNamed("errors")
 )
 
 type DataKey struct{ id int32 }
@@ -395,7 +398,7 @@ func (e *ErrorClass) Contains(err error, opts ...EquivalenceOption) bool {
 func LogWithStack(messages ...interface{}) {
 	buf := make([]byte, *stackLogSize)
 	buf = buf[:runtime.Stack(buf, false)]
-	log.Printf("%s\n%s", fmt.Sprintln(messages...), buf)
+	logger.Errorf("%s\n%s", fmt.Sprintln(messages...), buf)
 }
 
 var (
