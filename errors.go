@@ -494,13 +494,25 @@ func CatchPanic(err_ref *error) {
 
 type ErrorGroup struct {
 	Errors []error
+	limit  int
+	excess int
 }
 
 func NewErrorGroup() *ErrorGroup { return &ErrorGroup{} }
 
+func NewBoundedErrorGroup(limit int) *ErrorGroup {
+	return &ErrorGroup{
+		limit: limit,
+	}
+}
+
 func (e *ErrorGroup) Add(err error) {
 	if err != nil {
-		e.Errors = append(e.Errors, err)
+		if e.limit > 0 && len(e.Errors) == e.limit {
+			e.excess++
+		} else {
+			e.Errors = append(e.Errors, err)
+		}
 	}
 }
 
@@ -508,12 +520,57 @@ func (e *ErrorGroup) Finalize() error {
 	if len(e.Errors) == 0 {
 		return nil
 	}
-	if len(e.Errors) == 1 {
+	if len(e.Errors) == 1 && e.excess == 0 {
 		return e.Errors[0]
 	}
 	msgs := make([]string, 0, len(e.Errors))
 	for _, err := range e.Errors {
 		msgs = append(msgs, err.Error())
 	}
+	if e.excess > 0 {
+		msgs = append(msgs, fmt.Sprintf("... and %d more.", e.excess))
+		e.excess = 0
+	}
+	e.Errors = nil
 	return ErrorGroupError.New(strings.Join(msgs, "\n"))
+}
+
+type LoggingErrorGroup struct {
+	name   string
+	total  int
+	failed int
+}
+
+func NewLoggingErrorGroup(name string) *LoggingErrorGroup {
+	return &LoggingErrorGroup{name: name}
+}
+
+func (e *LoggingErrorGroup) Add(err error) {
+	e.total++
+	if err != nil {
+		logger.Errorf("%s: %s", e.name, err)
+		e.failed++
+	}
+}
+
+func (e *LoggingErrorGroup) Finalize() (err error) {
+	if e.failed > 0 {
+		err = ErrorGroupError.New("%s: %d of %d failed.", e.name, e.failed,
+			e.total)
+	}
+	e.total = 0
+	e.failed = 0
+	return err
+}
+
+type Finalizer interface {
+	Finalize() error
+}
+
+func Finalize(finalizers ...Finalizer) error {
+	var errs ErrorGroup
+	for _, finalizer := range finalizers {
+		errs.Add(finalizer.Finalize())
+	}
+	return errs.Finalize()
 }
