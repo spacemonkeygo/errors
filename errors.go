@@ -486,7 +486,7 @@ func CatchPanic(err_ref *error) {
 	}
 	err, ok := r.(error)
 	if ok {
-		*err_ref = err
+		*err_ref = PanicError.Wrap(err)
 		return
 	}
 	*err_ref = PanicError.New("%v", r)
