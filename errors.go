@@ -4,7 +4,6 @@ package errors
 
 import (
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"net"
@@ -12,23 +11,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-	"sync/atomic"
 	"syscall"
-
-	"code.spacemonkey.com/go/space/log"
 )
-
-var (
-	stackLogSize = flag.Int("errors.stack_trace_log_length", 4096,
-		"The max stack trace byte length to log")
-	lastId int32 = 0
-
-	logger = log.GetLoggerNamed("errors")
-)
-
-type DataKey struct{ id int32 }
-
-func GenSym() DataKey { return DataKey{id: atomic.AddInt32(&lastId, 1)} }
 
 var (
 	logOnCreation      = GenSym()
@@ -90,17 +74,29 @@ func boolWrapper(val interface{}, default_value bool) bool {
 	return default_value
 }
 
-// New creates an error class with the provided name and options.
-func New(parent *ErrorClass, name string, options ...ErrorOption) *ErrorClass {
-	if parent == nil {
-		parent = HierarchicalError
-	}
-	ec := &ErrorClass{parent: parent,
-		name: name,
-		data: make(map[DataKey]interface{})}
+// NewClass creates an error class with the provided name and options.
+func NewClass(name string, options ...ErrorOption) *ErrorClass {
+	return HierarchicalError.NewClass(name, options...)
+}
+
+// New is for compatibility with the default Go errors package.
+func New(text string) error {
+	// NewWith doesn't take a format string, even though we have no options.
+	return HierarchicalError.NewWith(text)
+}
+
+func (parent *ErrorClass) NewClass(name string,
+	options ...ErrorOption) *ErrorClass {
+
+	ec := &ErrorClass{
+		parent: parent,
+		name:   name,
+		data:   make(map[DataKey]interface{})}
+
 	for _, option := range options {
 		option(ec.data)
 	}
+
 	if !boolWrapper(ec.data[disableInheritance], false) {
 		// hoist options for speed
 		for key, val := range parent.data {
@@ -113,6 +109,7 @@ func New(parent *ErrorClass, name string, options ...ErrorOption) *ErrorClass {
 	} else {
 		delete(ec.data, disableInheritance)
 	}
+
 	return ec
 }
 
@@ -395,45 +392,39 @@ func (e *ErrorClass) Contains(err error, opts ...EquivalenceOption) bool {
 	return e.Contains(cast.err, opts...)
 }
 
-func LogWithStack(messages ...interface{}) {
-	buf := make([]byte, *stackLogSize)
-	buf = buf[:runtime.Stack(buf, false)]
-	logger.Errorf("%s\n%s", fmt.Sprintln(messages...), buf)
-}
-
 var (
 	// useful error classes
-	NotImplementedError = New(nil, "Not Implemented Error", LogOnCreation())
-	ProgrammerError     = New(nil, "Programmer Error", LogOnCreation())
-	PanicError          = New(nil, "Panic Error", LogOnCreation())
-	ErrorGroupError     = New(nil, "Error Group Error")
+	NotImplementedError = NewClass("Not Implemented Error", LogOnCreation())
+	ProgrammerError     = NewClass("Programmer Error", LogOnCreation())
+	PanicError          = NewClass("Panic Error", LogOnCreation())
+	ErrorGroupError     = NewClass("Error Group Error")
 
 	// classes we fake
 
 	// from os
-	SyscallError = New(SystemError, "Syscall Error")
+	SyscallError = SystemError.NewClass("Syscall Error")
 
 	// from syscall
-	ErrnoError = New(SystemError, "Errno Error")
+	ErrnoError = SystemError.NewClass("Errno Error")
 
 	// from net
-	NetworkError        = New(SystemError, "Network Error")
-	UnknownNetworkError = New(NetworkError, "Unknown Network Error")
-	AddrError           = New(NetworkError, "Addr Error")
-	InvalidAddrError    = New(AddrError, "Invalid Addr Error")
-	NetOpError          = New(NetworkError, "Network Op Error")
-	NetParseError       = New(NetworkError, "Network Parse Error")
-	DNSError            = New(NetworkError, "DNS Error")
-	DNSConfigError      = New(DNSError, "DNS Config Error")
+	NetworkError        = SystemError.NewClass("Network Error")
+	UnknownNetworkError = NetworkError.NewClass("Unknown Network Error")
+	AddrError           = NetworkError.NewClass("Addr Error")
+	InvalidAddrError    = AddrError.NewClass("Invalid Addr Error")
+	NetOpError          = NetworkError.NewClass("Network Op Error")
+	NetParseError       = NetworkError.NewClass("Network Parse Error")
+	DNSError            = NetworkError.NewClass("DNS Error")
+	DNSConfigError      = DNSError.NewClass("DNS Config Error")
 
 	// from io
-	IOError            = New(SystemError, "IO Error")
-	EOF                = New(IOError, "EOF")
-	ClosedPipeError    = New(IOError, "Closed Pipe Error")
-	NoProgressError    = New(IOError, "No Progress Error")
-	ShortBufferError   = New(IOError, "Short Buffer Error")
-	ShortWriteError    = New(IOError, "Short Write Error")
-	UnexpectedEOFError = New(IOError, "Unexpected EOF Error")
+	IOError            = SystemError.NewClass("IO Error")
+	EOF                = IOError.NewClass("EOF")
+	ClosedPipeError    = IOError.NewClass("Closed Pipe Error")
+	NoProgressError    = IOError.NewClass("No Progress Error")
+	ShortBufferError   = IOError.NewClass("Short Buffer Error")
+	ShortWriteError    = IOError.NewClass("Short Write Error")
+	UnexpectedEOFError = IOError.NewClass("Unexpected EOF Error")
 )
 
 func findSystemErrorClass(err error) *ErrorClass {
@@ -477,100 +468,4 @@ func findSystemErrorClass(err error) *ErrorClass {
 	default:
 		return SystemError
 	}
-}
-
-func CatchPanic(err_ref *error) {
-	r := recover()
-	if r == nil {
-		return
-	}
-	err, ok := r.(error)
-	if ok {
-		*err_ref = PanicError.Wrap(err)
-		return
-	}
-	*err_ref = PanicError.New("%v", r)
-}
-
-type ErrorGroup struct {
-	Errors []error
-	limit  int
-	excess int
-}
-
-func NewErrorGroup() *ErrorGroup { return &ErrorGroup{} }
-
-func NewBoundedErrorGroup(limit int) *ErrorGroup {
-	return &ErrorGroup{
-		limit: limit,
-	}
-}
-
-func (e *ErrorGroup) Add(err error) {
-	if err != nil {
-		if e.limit > 0 && len(e.Errors) == e.limit {
-			e.excess++
-		} else {
-			e.Errors = append(e.Errors, err)
-		}
-	}
-}
-
-func (e *ErrorGroup) Finalize() error {
-	if len(e.Errors) == 0 {
-		return nil
-	}
-	if len(e.Errors) == 1 && e.excess == 0 {
-		return e.Errors[0]
-	}
-	msgs := make([]string, 0, len(e.Errors))
-	for _, err := range e.Errors {
-		msgs = append(msgs, err.Error())
-	}
-	if e.excess > 0 {
-		msgs = append(msgs, fmt.Sprintf("... and %d more.", e.excess))
-		e.excess = 0
-	}
-	e.Errors = nil
-	return ErrorGroupError.New(strings.Join(msgs, "\n"))
-}
-
-type LoggingErrorGroup struct {
-	name   string
-	total  int
-	failed int
-}
-
-func NewLoggingErrorGroup(name string) *LoggingErrorGroup {
-	return &LoggingErrorGroup{name: name}
-}
-
-func (e *LoggingErrorGroup) Add(err error) {
-	e.total++
-	if err != nil {
-		logger.Errorf("%s: %s", e.name, err)
-		e.failed++
-	}
-}
-
-func (e *LoggingErrorGroup) Finalize() (err error) {
-	if e.failed > 0 {
-		err = ErrorGroupError.New("%s: %d of %d failed.", e.name, e.failed,
-			e.total)
-	}
-	e.total = 0
-	e.failed = 0
-	return err
-}
-
-type Finalizer interface {
-	Finalize() error
-}
-
-func Finalize(finalizers ...Finalizer) error {
-	var errs ErrorGroup
-	for _, finalizer := range finalizers {
-		errs.Add(finalizer.Finalize())
-	}
-	return errs.Finalize()
 }
