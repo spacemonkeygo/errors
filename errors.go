@@ -20,6 +20,10 @@ var (
 	disableInheritance = GenSym()
 )
 
+// ErrorClass is the basic hierarchical error type. An ErrorClass generates
+// actual errors, but the error class controls properties of the errors it
+// generates, such as where those errors are in the hierarchy, whether or not
+// they capture the stack on instantiation, and so forth.
 type ErrorClass struct {
 	parent *ErrorClass
 	name   string
@@ -27,41 +31,63 @@ type ErrorClass struct {
 }
 
 var (
-	// base error classes. To construct your own error class, use New.
-	SystemError = &ErrorClass{
-		parent: nil,
-		name:   "System Error",
-		data:   map[DataKey]interface{}{}}
+	// HierarchicalError is the base class for all hierarchical errors generated
+	// through this class.
 	HierarchicalError = &ErrorClass{
 		parent: nil,
 		name:   "Error",
 		data:   map[DataKey]interface{}{captureStack: true}}
+
+	// SystemError is the base error class for errors not generated through this
+	// errors library. It is not expected that anyone would ever generate new
+	// errors from a SystemError type or make subclasses.
+	SystemError = &ErrorClass{
+		parent: nil,
+		name:   "System Error",
+		data:   map[DataKey]interface{}{}}
 )
 
+// An ErrorOption is something that controls behavior of specific error
+// instances. They can be set on ErrorClasses or errors individually.
 type ErrorOption func(map[DataKey]interface{})
 
+// SetData will take the given value and store it with the error or error class
+// and its descendents associated with the given DataKey. Be sure to check out
+// the example. value can be nil to disable values for subhierarchies.
 func SetData(key DataKey, value interface{}) ErrorOption {
 	return func(m map[DataKey]interface{}) {
 		m[key] = value
 	}
 }
 
+// LogOnCreation tells the error class and its descendents to log the stack
+// whenever an error of this class is created.
 func LogOnCreation() ErrorOption {
 	return SetData(logOnCreation, true)
 }
 
+// CaptureStack tells the error class and its descendents to capture the stack
+// whenever an error of this class is created, and output it as part of the
+// error's Error() method. This is the default.
 func CaptureStack() ErrorOption {
 	return SetData(captureStack, true)
 }
 
+// NoLogOnCreation is the opposite of LogOnCreation and applies to the error,
+// class, and its descendents. This is the default.
 func NoLogOnCreation() ErrorOption {
 	return SetData(logOnCreation, false)
 }
 
+// NoCaptureStack is the opposite of NoCaptureStack and applies to the error,
+// class, and its descendents.
 func NoCaptureStack() ErrorOption {
 	return SetData(captureStack, false)
 }
 
+// If DisableInheritance is provided, the error or error class will belong to
+// its ancestors, but will not inherit their settings and options. Use with
+// caution, and may disappear in future releases.
 func DisableInheritance() ErrorOption {
 	return SetData(disableInheritance, true)
 }
@@ -74,17 +100,22 @@ func boolWrapper(val interface{}, default_value bool) bool {
 	return default_value
 }
 
-// NewClass creates an error class with the provided name and options.
+// NewClass creates an error class with the provided name and options. Classes
+// generated from this method and not *ErrorClass.NewClass will descend from
+// the root HierarchicalError base class.
 func NewClass(name string, options ...ErrorOption) *ErrorClass {
 	return HierarchicalError.NewClass(name, options...)
 }
 
-// New is for compatibility with the default Go errors package.
+// New is for compatibility with the default Go errors package. It simply
+// creates an error from the HierarchicalError root class.
 func New(text string) error {
 	// NewWith doesn't take a format string, even though we have no options.
 	return HierarchicalError.NewWith(text)
 }
 
+// NewClass creates an error class with the provided name and options. The new
+// class will descend from the receiver.
 func (parent *ErrorClass) NewClass(name string,
 	options ...ErrorOption) *ErrorClass {
 
@@ -113,14 +144,17 @@ func (parent *ErrorClass) NewClass(name string,
 	return ec
 }
 
+// Parent returns this error class' direct ancestor.
 func (e *ErrorClass) Parent() *ErrorClass {
 	return e.parent
 }
 
+// String returns this error class' name
 func (e *ErrorClass) String() string {
 	return e.name
 }
 
+// Is returns true if the receiver class is or is a descendent of parent.
 func (e *ErrorClass) Is(parent *ErrorClass) bool {
 	for check := e; check != nil; check = check.parent {
 		if check == parent {
@@ -171,17 +205,24 @@ func record(err error, depth int) error {
 	return cast
 }
 
-// Record will record the pc of where it is called on to the error.
+// Record will record the current pc on the given error if possible, adding
+// to the error's recorded exits list. Returns the given error argument.
 func Record(err error) error {
 	return record(err, 3)
 }
 
-// RecordBefore will record the pc depth frames above of where it is called on
-// to the error. Record(err) is equivalent to RecordBefore(err, 0)
+// RecordBefore will record the pc depth frames above the current stack frame
+// on the given error if possible, adding to the error's recorded exits list.
+// Record(err) is equivalent to RecordBefore(err, 0). Returns the given error
+// argument.
 func RecordBefore(err error, depth int) error {
 	return record(err, 3+depth)
 }
 
+// Error is the type that represents a specific error instance. It is not
+// expected that you will work with *Error classes directly. Instead, you
+// should use the 'error' interface and errors package methods that operate
+// on errors instances.
 type Error struct {
 	err   error
 	class *ErrorClass
@@ -190,6 +231,8 @@ type Error struct {
 	data  map[DataKey]interface{}
 }
 
+// GetData returns the value associated with the given DataKey on this error
+// or any of its ancestors. Please see the example for SetData
 func (e *Error) GetData(key DataKey) interface{} {
 	if e.data != nil {
 		val, ok := e.data[key]
@@ -203,6 +246,8 @@ func (e *Error) GetData(key DataKey) interface{} {
 	return e.class.data[key]
 }
 
+// GetData returns the value associated with the given DataKey on this error
+// or any of its ancestors. Please see the example for SetData
 func GetData(err error, key DataKey) interface{} {
 	cast, ok := err.(*Error)
 	if ok {
@@ -254,22 +299,30 @@ func (e *ErrorClass) wrap(err error, classes []*ErrorClass,
 	return rv
 }
 
+// WrapUnless wraps the given error in the receiver error class unless the
+// error is already an instance of one of the provided error classes.
 func (e *ErrorClass) WrapUnless(err error, classes ...*ErrorClass) error {
 	return e.wrap(err, classes, nil)
 }
 
+// Wrap wraps the given error in the receiver error class with the provided
+// error-specific options.
 func (e *ErrorClass) Wrap(err error, options ...ErrorOption) error {
 	return e.wrap(err, nil, options)
 }
 
+// New makes a new error type. It takes a format string.
 func (e *ErrorClass) New(format string, args ...interface{}) error {
 	return e.wrap(fmt.Errorf(format, args...), nil, nil)
 }
 
+// NewWith makes a new error type with the provided error-specific options.
 func (e *ErrorClass) NewWith(message string, options ...ErrorOption) error {
 	return e.wrap(errors.New(message), nil, options)
 }
 
+// Error conforms to the error interface. Error will return the backtrace if
+// it was captured and any recorded exits.
 func (e *Error) Error() string {
 	message := strings.TrimRight(e.err.Error(), "\n ")
 	if strings.Contains(message, "\n") {
@@ -289,6 +342,7 @@ func (e *Error) Error() string {
 	return message
 }
 
+// Message returns just the error message without the backtrace or exits.
 func (e *Error) Message() string {
 	message := strings.TrimRight(GetMessage(e.err), "\n ")
 	if strings.Contains(message, "\n") {
@@ -298,36 +352,16 @@ func (e *Error) Message() string {
 	return fmt.Sprintf("%s: %s", e.class.String(), message)
 }
 
+// WrappedErr returns the wrapped error, if the current error is simply
+// wrapping some previously returned error or system error. You probably want
+// the package-level WrappedErr
 func (e *Error) WrappedErr() error {
 	return e.err
 }
 
-func (e *Error) Class() *ErrorClass {
-	return e.class
-}
-
-func (e *Error) Stack() string {
-	if len(e.stack) > 0 {
-		frames := make([]string, len(e.stack))
-		for i, f := range e.stack {
-			frames[i] = f.String()
-		}
-		return strings.Join(frames, "\n")
-	}
-	return ""
-}
-
-func (e *Error) Exits() string {
-	if len(e.exits) > 0 {
-		exits := make([]string, len(e.exits))
-		for i, ex := range e.exits {
-			exits[i] = ex.String()
-		}
-		return strings.Join(exits, "\n")
-	}
-	return ""
-}
-
+// WrappedErr returns the wrapped error, if the current error is simply
+// wrapping some previously returned error or system error. If the error isn't
+// hierarchical it is just returned.
 func WrappedErr(err error) error {
 	cast, ok := err.(*Error)
 	if !ok {
@@ -336,6 +370,15 @@ func WrappedErr(err error) error {
 	return cast.WrappedErr()
 }
 
+// Class will return the appropriate error class for the given error. You
+// probably want the package-level GetClass.
+func (e *Error) Class() *ErrorClass {
+	return e.class
+}
+
+// GetClass will return the appropriate error class for the given error.
+// If the error is not nil, GetClass always returns a hierarchical error class,
+// and even attempts to determine a class for common system error types.
 func GetClass(err error) *ErrorClass {
 	if err == nil {
 		return nil
@@ -347,6 +390,57 @@ func GetClass(err error) *ErrorClass {
 	return cast.class
 }
 
+// Stack will return the stack associated with the error if one is found. You
+// probably want the package-level GetStack.
+func (e *Error) Stack() string {
+	if len(e.stack) > 0 {
+		frames := make([]string, len(e.stack))
+		for i, f := range e.stack {
+			frames[i] = f.String()
+		}
+		return strings.Join(frames, "\n")
+	}
+	return ""
+}
+
+// GetStack will return the stack associated with the error if one is found.
+func GetStack(err error) string {
+	if err == nil {
+		return ""
+	}
+	cast, ok := err.(*Error)
+	if !ok {
+		return ""
+	}
+	return cast.Stack()
+}
+
+// Exits will return the exits recorded on the error if any are found. You
+// probably want the package-level GetExits.
+func (e *Error) Exits() string {
+	if len(e.exits) > 0 {
+		exits := make([]string, len(e.exits))
+		for i, ex := range e.exits {
+			exits[i] = ex.String()
+		}
+		return strings.Join(exits, "\n")
+	}
+	return ""
+}
+
+// GetExits will return the exits recorded on the error if any are found.
+func GetExits(err error) string {
+	if err == nil {
+		return ""
+	}
+	cast, ok := err.(*Error)
+	if !ok {
+		return ""
+	}
+	return cast.Exits()
+}
+
+// GetMessage returns just the error message without the backtrace or exits.
 func GetMessage(err error) string {
 	if err == nil {
 		return ""
@@ -358,9 +452,13 @@ func GetMessage(err error) string {
 	return cast.Message()
 }
 
+// EquivalenceOption values control behavior of determining whether or not an
+// error belongs to a specific class.
 type EquivalenceOption int
 
 const (
+	// If IncludeWrapped is used, wrapped errors are also used for determining
+	// class membership.
 	IncludeWrapped EquivalenceOption = 1
 )
 
@@ -371,10 +469,14 @@ func combineEquivOpts(opts []EquivalenceOption) (rv EquivalenceOption) {
 	return rv
 }
 
+// Is returns whether or not an error belongs to a specific class. Typically
+// you should use Contains instead.
 func (e *Error) Is(ec *ErrorClass, opts ...EquivalenceOption) bool {
 	return ec.Contains(e, opts...)
 }
 
+// Contains returns whether or not the receiver error class contains the given
+// error instance.
 func (e *ErrorClass) Contains(err error, opts ...EquivalenceOption) bool {
 	if err == nil {
 		return false
@@ -393,13 +495,10 @@ func (e *ErrorClass) Contains(err error, opts ...EquivalenceOption) bool {
 }
 
 var (
-	// useful error classes
+	// Useful error classes
 	NotImplementedError = NewClass("Not Implemented Error", LogOnCreation())
 	ProgrammerError     = NewClass("Programmer Error", LogOnCreation())
 	PanicError          = NewClass("Panic Error", LogOnCreation())
-	ErrorGroupError     = NewClass("Error Group Error")
-
-	// classes we fake
 
 	// from os
 	SyscallError = SystemError.NewClass("Syscall Error")

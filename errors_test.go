@@ -1,3 +1,5 @@
+// Copyright (C) 2013 Space Monkey, Inc.
+
 package errors
 
 import (
@@ -13,6 +15,7 @@ var (
 )
 
 func init() {
+	log.SetFlags(0)
 	log.SetOutput(logbuf)
 }
 
@@ -124,8 +127,76 @@ func TestLoggingErrorGroupLogsAndReturnsErrIfAdded(t *testing.T) {
 	}
 
 	actual = string(logbuf.Bytes())
-	expected = "- foo: BAD\n"
+	expected = "foo: BAD\n"
 	if !strings.HasSuffix(actual, expected) {
 		t.Fatalf("expected suffix %q, got %q", expected, actual)
+	}
+}
+
+func assert(t *testing.T, val bool) {
+	if !val {
+		t.Fatal("assertion failed")
+	}
+}
+
+func ExampleSetData(t *testing.T) {
+	// Create our own DataKeys
+	UserMessageKey := GenSym()
+	ConstraintNameKey := GenSym()
+	OtherKey := GenSym()
+
+	// Create some error classes
+	ApplicationError := NewClass("Application Error")
+	ConstraintError := ApplicationError.NewClass("Constraint Error",
+		SetData(UserMessageKey, "A constraint failed on your data"))
+	ValueConstraintError := ConstraintError.NewClass("Value Constraint Error")
+
+	// Create an actual error. Something bad happened.
+	err := ValueConstraintError.NewWith("value constraint failed!",
+		SetData(ConstraintNameKey, "equality_constraint"))
+
+	// Make sure everything is how we expect
+	assert(t, ValueConstraintError.Contains(err))
+	assert(t, ConstraintError.Contains(err))
+	assert(t, ApplicationError.Contains(err))
+	assert(t, !SystemError.Contains(err))
+
+	assert(t, GetData(err, UserMessageKey).(string) ==
+		"A constraint failed on your data")
+	assert(t, GetData(err, ConstraintNameKey).(string) == "equality_constraint")
+	assert(t, GetData(err, OtherKey) == nil)
+}
+
+func ExampleCatchPanic(t *testing.T) {
+	panicfn := func() {
+		panic("oh hai")
+	}
+	nonpanicfn := func() (err error) {
+		defer CatchPanic(&err)
+		panicfn()
+		return nil
+	}
+	err := nonpanicfn()
+	assert(t, PanicError.Contains(err))
+}
+
+func ExampleErrorGroup(t *testing.T) {
+	// example utils
+	work := func(i int) error {
+		if i%2 == 0 {
+			return nil
+		}
+		return New("error")
+	}
+	handle_err := func(error) {}
+
+	// example:
+	errs := NewErrorGroup()
+	for i := 0; i < 10; i++ {
+		errs.Add(work(i))
+	}
+	err := errs.Finalize()
+	if err != nil {
+		handle_err(err)
 	}
 }
