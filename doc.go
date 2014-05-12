@@ -151,14 +151,16 @@ be mimicked as follows:
     }
   }
 
-Another great example of this functionality is the errhttp subpackage. See
-the errhttp source for more examples of how to use SetData/GetData.
-
 HTTP handling
 
-Arbitrary error values really helped clean up our error code. We store HTTP
-error messages and status codes in it in the errhttp package. Take a look to
+Another great example of arbitrary error value functionality is the errhttp
+subpackage. See the errhttp source for more examples of how to use
+SetData/GetData.
+
+The errhttp package really helped clean up our error code. Take a look to
 see if it can help your error handling with HTTP stacks too.
+
+http://godoc.org/github.com/SpaceMonkeyGo/errors/errhttp
 
 Exit recording
 

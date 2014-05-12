@@ -512,12 +512,16 @@ var (
 	ProgrammerError     = NewClass("Programmer Error", LogOnCreation())
 	PanicError          = NewClass("Panic Error", LogOnCreation())
 
+	// The following SystemError descendants are provided such that the GetClass
+	// method has something to return for standard library error types not
+	// defined through this class.
+	//
+	// It is not expected that anyone would create instances of these classes.
+	//
 	// from os
 	SyscallError = SystemError.NewClass("Syscall Error")
-
 	// from syscall
 	ErrnoError = SystemError.NewClass("Errno Error")
-
 	// from net
 	NetworkError        = SystemError.NewClass("Network Error")
 	UnknownNetworkError = NetworkError.NewClass("Unknown Network Error")
@@ -527,7 +531,6 @@ var (
 	NetParseError       = NetworkError.NewClass("Network Parse Error")
 	DNSError            = NetworkError.NewClass("DNS Error")
 	DNSConfigError      = DNSError.NewClass("DNS Config Error")
-
 	// from io
 	IOError            = SystemError.NewClass("IO Error")
 	EOF                = IOError.NewClass("EOF")
