@@ -19,7 +19,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/SpaceMonkeyGo/errors"
+	"github.com/spacemonkeygo/errors"
 )
 
 func writeError(msg string, code int) {}

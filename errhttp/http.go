@@ -24,7 +24,7 @@ package errhttp
 import (
 	"fmt"
 
-	"github.com/SpaceMonkeyGo/errors"
+	"github.com/spacemonkeygo/errors"
 )
 
 var (

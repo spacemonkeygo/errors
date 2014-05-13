@@ -1,6 +1,6 @@
 # errors
 
-Please see http://godoc.org/github.com/SpaceMonkeyGo/errors for info
+Please see http://godoc.org/github.com/spacemonkeygo/errors for info
 
 ### License
 

@@ -51,7 +51,7 @@ the os error handling routines can be mimicked as follows:
   package osmimic
 
   import (
-    "github.com/SpaceMonkeyGo/errors"
+    "github.com/spacemonkeygo/errors"
   )
 
   var (
@@ -111,7 +111,7 @@ be mimicked as follows:
   package netmimic
 
   import (
-    "github.com/SpaceMonkeyGo/errors"
+    "github.com/spacemonkeygo/errors"
   )
 
   var (
@@ -160,7 +160,7 @@ SetData/GetData.
 The errhttp package really helped clean up our error code. Take a look to
 see if it can help your error handling with HTTP stacks too.
 
-http://godoc.org/github.com/SpaceMonkeyGo/errors/errhttp
+http://godoc.org/github.com/spacemonkeygo/errors/errhttp
 
 Exit recording
 
