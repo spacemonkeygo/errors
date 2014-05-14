@@ -15,7 +15,6 @@
 package errors
 
 import (
-	"flag"
 	"fmt"
 	"log"
 	"runtime"
@@ -23,9 +22,10 @@ import (
 )
 
 var (
-	stackLogSize = flag.Int("errors.stack_trace_log_length", 4096,
-		"The max stack trace byte length to log")
+	// The max stack trace byte length to log
+	StackLogSize = 4096
 
+	// Change this method if you want errors to log somehow else
 	LogMethod = log.Printf
 
 	ErrorGroupError = NewClass("Error Group Error")
@@ -33,7 +33,7 @@ var (
 
 // LogWithStack will log the given messages with the current stack
 func LogWithStack(messages ...interface{}) {
-	buf := make([]byte, *stackLogSize)
+	buf := make([]byte, StackLogSize)
 	buf = buf[:runtime.Stack(buf, false)]
 	LogMethod("%s\n%s", fmt.Sprintln(messages...), buf)
 }
