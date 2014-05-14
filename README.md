@@ -1,4 +1,4 @@
-# errors
+# errors [![Build Status](https://api.travis-ci.org/spacemonkeygo/errors.svg?branch=master)](https://travis-ci.org/spacemonkeygo/errors)
 
 Please see http://godoc.org/github.com/spacemonkeygo/errors for info
 
