@@ -22,9 +22,6 @@ import (
 )
 
 var (
-	// The max stack trace byte length to log
-	StackLogSize = 4096
-
 	// Change this method if you want errors to log somehow else
 	LogMethod = log.Printf
 
@@ -33,7 +30,7 @@ var (
 
 // LogWithStack will log the given messages with the current stack
 func LogWithStack(messages ...interface{}) {
-	buf := make([]byte, StackLogSize)
+	buf := make([]byte, Config.Stacklogsize)
 	buf = buf[:runtime.Stack(buf, false)]
 	LogMethod("%s\n%s", fmt.Sprintln(messages...), buf)
 }
