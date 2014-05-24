@@ -61,15 +61,15 @@ the os error handling routines can be mimicked as follows:
 
   func Open(path string) (*File, error) {
     // actually do something here
-    return NotExist.New("path %#v doesn't exist", path)
+    return nil, NotExist.New("path %#v doesn't exist", path)
   }
 
   func MyMethod() error {
     fh, err := Open(mypath)
-    if NotExist.Contains(err) {
-      // file doesn't exist, do stuff
-    }
     if err != nil {
+      if NotExist.Contains(err) {
+        // file doesn't exist, do stuff
+      }
       return err
     }
     // do stuff
@@ -80,7 +80,7 @@ Stack traces
 It doesn't take long during Go development before you may find yourself
 wondering where an error came from. In other languages, as soon as an error is
 raised, a stack trace is captured and is displayed as part of the language's
-error handling. Go error types are simply basic values, and no such magic
+error handling. Go error types are simply basic values and no such magic
 happens to tell you what line or what stack an error came from.
 
 The errors package fixes this by optionally (but by default) capturing the
@@ -102,7 +102,7 @@ Arbitrary error values
 These hierarchical settings (for whether or not errors captured or logged stack
 traces) were so useful, we generalized the system to allow users to extend
 the errors system with their own values. A user can tag a specific error with
-some value, given a statically defined key, or tag a whole error class subtree.
+some value given a statically defined key, or tag a whole error class subtree.
 
 Arbitrary error values can easily handle situtations like net.Error's
 Temporary() field, where some errors are temporary and others aren't. This can
