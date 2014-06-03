@@ -13,7 +13,7 @@
 // limitations under the License.
 
 /*
-Package errors is the error library Go is missing.
+Package errors is a flexible error support library for Go
 
 Motivation
 
