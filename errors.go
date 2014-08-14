@@ -156,6 +156,20 @@ func (parent *ErrorClass) NewClass(name string,
 	return ec
 }
 
+// MustAddData allows adding data key value pairs to error classes after they
+// are created. This is useful for allowing external packages add namespaced
+// values to errors defined outside of their package. It will panic if the
+// key is already set in the error class or any of its parents.
+func (e *ErrorClass) MustAddData(key DataKey, value interface{}) {
+	for parent := e; parent != nil; parent = parent.Parent() {
+		if _, ex := parent.data[key]; ex {
+			panic(fmt.Sprintf("key already exists in %s: %#v",
+				parent.name, key))
+		}
+	}
+	e.data[key] = value
+}
+
 // Parent returns this error class' direct ancestor.
 func (e *ErrorClass) Parent() *ErrorClass {
 	return e.parent
