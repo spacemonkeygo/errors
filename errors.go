@@ -174,6 +174,9 @@ func (e *ErrorClass) Parent() *ErrorClass {
 
 // String returns this error class' name
 func (e *ErrorClass) String() string {
+	if e == nil {
+		return "nil"
+	}
 	return e.name
 }
 
