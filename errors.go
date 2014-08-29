@@ -167,6 +167,12 @@ func (e *ErrorClass) MustAddData(key DataKey, value interface{}) {
 	e.data[key] = value
 }
 
+// GetData will return any data set on the error class for the given key. It
+// returns nil if there is no data set for that key.
+func (e *ErrorClass) GetData(key DataKey) interface{} {
+	return e.data[key]
+}
+
 // Parent returns this error class' direct ancestor.
 func (e *ErrorClass) Parent() *ErrorClass {
 	return e.parent
