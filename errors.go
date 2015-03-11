@@ -91,7 +91,7 @@ func NoLogOnCreation() ErrorOption {
 	return SetData(logOnCreation, false)
 }
 
-// NoCaptureStack is the opposite of NoCaptureStack and applies to the error,
+// NoCaptureStack is the opposite of CaptureStack and applies to the error,
 // class, and its descendents.
 func NoCaptureStack() ErrorOption {
 	return SetData(captureStack, false)
