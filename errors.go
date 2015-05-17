@@ -24,6 +24,8 @@ import (
 	"runtime"
 	"strings"
 	"syscall"
+
+	"golang.org/x/net/context"
 )
 
 var (
@@ -559,6 +561,10 @@ var (
 	ShortBufferError   = IOError.NewClass("Short Buffer Error")
 	ShortWriteError    = IOError.NewClass("Short Write Error")
 	UnexpectedEOFError = IOError.NewClass("Unexpected EOF Error")
+	// from context
+	ContextError    = SystemError.NewClass("Context Error")
+	ContextCanceled = ContextError.NewClass("Canceled")
+	ContextTimeout  = ContextError.NewClass("Timeout")
 )
 
 func findSystemErrorClass(err error) *ErrorClass {
@@ -575,6 +581,10 @@ func findSystemErrorClass(err error) *ErrorClass {
 		return ShortBufferError
 	case io.ErrShortWrite:
 		return ShortWriteError
+	case context.Canceled:
+		return ContextCanceled
+	case context.DeadlineExceeded:
+		return ContextTimeout
 	default:
 		break
 	}
