@@ -258,11 +258,11 @@ func RecordBefore(err error, depth int) error {
 // should use the 'error' interface and errors package methods that operate
 // on errors instances.
 type Error struct {
-	err   error
-	class *ErrorClass
-	stack []frame
-	exits []frame
-	data  map[DataKey]interface{}
+	err    error
+	class  *ErrorClass
+	stacks [][]frame
+	exits  []frame
+	data   map[DataKey]interface{}
 }
 
 // GetData returns the value associated with the given DataKey on this error
@@ -320,17 +320,39 @@ func (e *ErrorClass) wrap(err error, classes []*ErrorClass,
 	}
 
 	if boolWrapper(rv.GetData(captureStack), false) {
-		var pcs [256]uintptr
-		amount := runtime.Callers(3, pcs[:])
-		rv.stack = make([]frame, amount)
-		for i := 0; i < amount; i++ {
-			rv.stack[i] = frame{pcs[i]}
-		}
+		rv.stacks = [][]frame{getStack(3)}
 	}
 	if boolWrapper(rv.GetData(logOnCreation), false) {
 		LogWithStack(rv.Error())
 	}
 	return rv
+}
+
+func getStack(depth int) (stack []frame) {
+	var pcs [256]uintptr
+	amount := runtime.Callers(depth+1, pcs[:])
+	stack = make([]frame, amount)
+	for i := 0; i < amount; i++ {
+		stack[i] = frame{pcs[i]}
+	}
+	return stack
+}
+
+// AttachStack adds another stack to the current error's stack trace if it
+// exists
+func AttachStack(err error) {
+	if err == nil {
+		return
+	}
+	cast, ok := err.(*Error)
+	if !ok {
+		return
+	}
+	if len(cast.stacks) < 1 {
+		// only record stacks if this error was supposed to
+		return
+	}
+	cast.stacks = append(cast.stacks, getStack(2))
 }
 
 // WrapUnless wraps the given error in the receiver error class unless the
@@ -427,10 +449,17 @@ func GetClass(err error) *ErrorClass {
 // Stack will return the stack associated with the error if one is found. You
 // probably want the package-level GetStack.
 func (e *Error) Stack() string {
-	if len(e.stack) > 0 {
-		frames := make([]string, len(e.stack))
-		for i, f := range e.stack {
-			frames[i] = f.String()
+	if len(e.stacks) > 0 {
+		var frames []string
+		for _, stack := range e.stacks {
+			if frames == nil {
+				frames = make([]string, 0, len(stack))
+			} else {
+				frames = append(frames, "----- attached stack -----")
+			}
+			for _, f := range stack {
+				frames = append(frames, f.String())
+			}
 		}
 		return strings.Join(frames, "\n")
 	}
