@@ -24,8 +24,6 @@ import (
 	"runtime"
 	"strings"
 	"syscall"
-
-	"golang.org/x/net/context"
 )
 
 var (
@@ -610,9 +608,9 @@ func findSystemErrorClass(err error) *ErrorClass {
 		return ShortBufferError
 	case io.ErrShortWrite:
 		return ShortWriteError
-	case context.Canceled:
+	case contextCanceled:
 		return ContextCanceled
-	case context.DeadlineExceeded:
+	case contextDeadlineExceeded:
 		return ContextTimeout
 	default:
 		break
