@@ -23,7 +23,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-	"syscall"
 )
 
 var (
@@ -615,11 +614,12 @@ func findSystemErrorClass(err error) *ErrorClass {
 	default:
 		break
 	}
+	if isErrnoError(err) {
+		return ErrnoError
+	}
 	switch err.(type) {
 	case *os.SyscallError:
 		return SyscallError
-	case syscall.Errno:
-		return ErrnoError
 	case net.UnknownNetworkError:
 		return UnknownNetworkError
 	case *net.AddrError:

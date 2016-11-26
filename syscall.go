@@ -1,4 +1,4 @@
-// Copyright (C) 2016 Space Monkey, Inc.
+// Copyright (C) 2014 Space Monkey, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,19 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// +build go1.7
-
-// TODO: remove this build restriction once appengine supports 1.7
-
 // +build !appengine
 
 package errors
 
 import (
-	"context"
+	"syscall"
 )
 
-var (
-	contextCanceled         = context.Canceled
-	contextDeadlineExceeded = context.DeadlineExceeded
-)
+func isErrnoError(err error) bool {
+	_, ok := err.(syscall.Errno)
+	return ok
+}
