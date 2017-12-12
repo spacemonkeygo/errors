@@ -429,6 +429,12 @@ func (e *Error) Class() *ErrorClass {
 	return e.class
 }
 
+// Name returns the name of the error: in this case the name of the class the
+// error belongs to.
+func (e *Error) Name() (string, bool) {
+	return e.class.name, true
+}
+
 // GetClass will return the appropriate error class for the given error.
 // If the error is not nil, GetClass always returns a hierarchical error class,
 // and even attempts to determine a class for common system error types.
