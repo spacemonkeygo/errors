@@ -122,7 +122,7 @@ func TestLoggingErrorGroupReturnsNilIfNoneAdded(t *testing.T) {
 
 	logmsg := string(logbuf.Bytes())
 	if logmsg != "" {
-		t.Fatal("expecting nothing to log, got %s", logmsg)
+		t.Fatalf("expecting nothing to log, got %s", logmsg)
 	}
 }
 
@@ -143,6 +143,12 @@ func TestLoggingErrorGroupLogsAndReturnsErrIfAdded(t *testing.T) {
 	if !strings.HasSuffix(actual, expected) {
 		t.Fatalf("expected suffix %q, got %q", expected, actual)
 	}
+}
+
+func TestErrorName(t *testing.T) {
+	name, ok := HierarchicalError.New("test").(*Error).Name()
+	assert(t, ok)
+	assert(t, name == "Error")
 }
 
 func assert(t *testing.T, val bool) {
