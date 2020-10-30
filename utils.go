@@ -25,7 +25,8 @@ var (
 	// Change this method if you want errors to log somehow else
 	LogMethod = log.Printf
 
-	ErrorGroupError = NewClass("Error Group Error")
+	ErrorGroupError               = NewClass("Error Group Error")
+	ErrorGroupNoCaptureStackError = NewClass("Error Group Error", NoCaptureStack())
 )
 
 // LogWithStack will log the given messages with the current stack
@@ -53,13 +54,21 @@ func CatchPanic(err_ref *error) {
 // ErrorGroup is a type for collecting errors from a bunch of independent
 // tasks. ErrorGroups are not threadsafe. See the example for usage.
 type ErrorGroup struct {
-	Errors []error
-	limit  int
-	excess int
+	Errors         []error
+	noCaptureStack bool
+	limit          int
+	excess         int
 }
 
 // NewErrorGroup makes a new ErrorGroup
 func NewErrorGroup() *ErrorGroup { return &ErrorGroup{} }
+
+// NewErrorGroup make a new ErrorGroup that doesn't print the stacktrace
+func NewErrorGroupNoCaptureStack() *ErrorGroup {
+	return &ErrorGroup{
+		noCaptureStack: true,
+	}
+}
 
 // NewBoundedErrorGroup makes a new ErrorGroup that will not track more than
 // limit errors. Once the limit is reached, the ErrorGroup will track
@@ -101,6 +110,10 @@ func (e *ErrorGroup) Finalize() error {
 		e.excess = 0
 	}
 	e.Errors = nil
+	if e.noCaptureStack {
+		return ErrorGroupNoCaptureStackError.New(strings.Join(msgs, "\n"))
+	}
+
 	return ErrorGroupError.New(strings.Join(msgs, "\n"))
 }
 
